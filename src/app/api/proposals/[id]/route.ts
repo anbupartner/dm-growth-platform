@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { proposals } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import fs from "node:fs";
 import path from "node:path";
+import { tryDeletePdfFromDisk } from "@/lib/pdf-storage";
 
 import { apiErrorResponse } from "@/lib/api-handler";
 
@@ -26,8 +26,7 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/proposal
     const row = await db.query.proposals.findFirst({ where: eq(proposals.id, id) });
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    const filePath = path.join(process.cwd(), "data", "proposals", `${id}.pdf`);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    tryDeletePdfFromDisk(path.join(process.cwd(), "data", "proposals"), `${id}.pdf`);
 
     await db.delete(proposals).where(eq(proposals.id, id));
     return NextResponse.json({ ok: true });

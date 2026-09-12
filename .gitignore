@@ -44,6 +44,10 @@ yarn-error.log*
 # backup/restore-point zips (large, timestamped snapshots — not source)
 /backups/
 
+# one-off Turso migration input (real client PII + a live API key pulled from
+# production — never source, never committed; see scripts/migrate-turso-import.ts)
+/scripts/migration-data/
+
 # one-off delivery/output files from working with Claude (not source)
 /Claude outputs/
 pitch-icons.zip

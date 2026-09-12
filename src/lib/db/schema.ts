@@ -173,6 +173,11 @@ export const reportSnapshots = sqliteTable("report_snapshots", {
   // just not editable — regenerate to get an editable version).
   reportData: text("report_data"),
   pdfFileName: text("pdf_file_name"),
+  // Base64-encoded PDF bytes — the actual source of truth for downloads (see
+  // src/lib/pdf-storage.ts). Nullable because rows from before this column
+  // existed only have a copy on local disk (or, for rows imported from the
+  // pre-Turso production export, no PDF at all — those regenerate fresh).
+  pdfData: text("pdf_data"),
   createdAt: timestamps.createdAt,
 });
 
@@ -193,6 +198,10 @@ export const proposals = sqliteTable("proposals", {
   termsText: text("terms_text"), // payment terms / what's included, free text
   validUntil: integer("valid_until", { mode: "timestamp" }),
   pdfFileName: text("pdf_file_name"),
+  // Base64-encoded PDF bytes — the actual source of truth for downloads (see
+  // src/lib/pdf-storage.ts). Nullable for the same reason as
+  // reportSnapshots.pdfData above.
+  pdfData: text("pdf_data"),
   // Optional per-proposal override of the "prepared by" identity shown on
   // the PDF's cover page, header/footer and closing CTA (consultant name,
   // company, phone, WhatsApp, email, website) — JSON, only the fields the
