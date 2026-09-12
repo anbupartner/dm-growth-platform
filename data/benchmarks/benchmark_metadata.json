@@ -1,0 +1,15 @@
+{
+  "description": "Source-of-truth benchmark data files. The application reads these dynamically via the seed script and the Benchmarks admin screen — never hard-code benchmark values into frontend components or the calculation engine (see spec section 32).",
+  "fields": [
+    "platform", "industry", "metric", "campaignType", "value", "unit", "currency",
+    "region", "source", "sourceUrl", "benchmarkYear", "effectiveDate", "reviewDate",
+    "version", "status", "notes"
+  ],
+  "priority": [
+    "1. Client Historical Data",
+    "2. Consultant Custom Assumption",
+    "3. Current Industry Benchmark",
+    "4. Generic Fallback Benchmark"
+  ],
+  "lastImported": "2026-09-01"
+}
