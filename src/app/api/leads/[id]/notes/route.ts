@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { leadNotes } from "@/lib/db/schema";
+// import { leadNotes } from "@/lib/db/schema";   jsut update the root below line
+import { leadDocuments } from "@/lib/db/schema";
 import { eq, desc } from "drizzle-orm";
 
 import { apiErrorResponse } from "@/lib/api-handler";
