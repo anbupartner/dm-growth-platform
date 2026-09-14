@@ -1,0 +1,95 @@
+{
+  "note": "Only 3 of the 13 leads had non-default billing records; the other 10 leads returned an ACTIVE row with all amounts null (default row, not real billing data) and were skipped.",
+  "leadBilling": [
+    {
+      "leadId": "44b53b13-a19b-4c64-8237-b6109d3994d6",
+      "customerId": "LEAD-0008",
+      "businessName": "Balwaan",
+      "status": "ACTIVE",
+      "advanceAmount": null,
+      "monthlyFeeAmount": null,
+      "projectFeeAmount": null,
+      "currency": "AED",
+      "billingNotes": null,
+      "canceledAt": "2026-09-03T18:24:23.000Z",
+      "resumedAt": "2026-09-03T18:24:25.000Z",
+      "taxExempt": false,
+      "createdAt": "2026-09-03T18:24:17.000Z",
+      "updatedAt": "2026-09-04T12:35:40.000Z",
+      "payments": [
+        {
+          "id": "52de7808-30cd-4986-ab47-54425c609c3d",
+          "leadId": "44b53b13-a19b-4c64-8237-b6109d3994d6",
+          "type": "MONTHLY_FEE",
+          "amount": 2000,
+          "paymentDate": "2026-09-04T00:00:00.000Z",
+          "note": null,
+          "createdAt": "2026-09-04T12:35:41.000Z"
+        }
+      ]
+    },
+    {
+      "leadId": "a7b2ee59-d7e0-42c9-83b5-72d6c79d32b2",
+      "customerId": "LEAD-0010",
+      "businessName": "terew",
+      "status": "ACTIVE",
+      "advanceAmount": 500,
+      "monthlyFeeAmount": 5000,
+      "projectFeeAmount": 60000,
+      "currency": "AED",
+      "billingNotes": null,
+      "canceledAt": null,
+      "resumedAt": null,
+      "taxExempt": false,
+      "createdAt": "2026-09-04T11:45:42.000Z",
+      "updatedAt": "2026-09-04T12:34:42.000Z",
+      "payments": [
+        {
+          "id": "0e343a5a-7a57-4880-b272-338781d1793c",
+          "leadId": "a7b2ee59-d7e0-42c9-83b5-72d6c79d32b2",
+          "type": "ADVANCE",
+          "amount": 200,
+          "paymentDate": "2026-09-04T00:00:00.000Z",
+          "note": null,
+          "createdAt": "2026-09-04T11:45:50.000Z"
+        }
+      ]
+    },
+    {
+      "leadId": "1d21f0d8-d9c9-4be9-a214-80bcbe24c9b7",
+      "customerId": "LEAD-0005",
+      "businessName": "tt",
+      "status": "ACTIVE",
+      "advanceAmount": 500,
+      "monthlyFeeAmount": 30000,
+      "projectFeeAmount": 90000,
+      "currency": "INR",
+      "billingNotes": null,
+      "canceledAt": "2026-09-03T18:47:12.000Z",
+      "resumedAt": "2026-09-03T18:47:29.000Z",
+      "taxExempt": false,
+      "createdAt": "2026-09-03T18:47:12.000Z",
+      "updatedAt": "2026-09-03T20:09:08.000Z",
+      "payments": [
+        {
+          "id": "18f71d7d-853d-4f2b-bdd2-a8903af3e87b",
+          "leadId": "1d21f0d8-d9c9-4be9-a214-80bcbe24c9b7",
+          "type": "ADVANCE",
+          "amount": 5000,
+          "paymentDate": "2026-09-04T00:00:00.000Z",
+          "note": null,
+          "createdAt": "2026-09-03T18:48:30.000Z"
+        },
+        {
+          "id": "450732ea-e2cc-4fd0-ae78-a9d807c1c962",
+          "leadId": "1d21f0d8-d9c9-4be9-a214-80bcbe24c9b7",
+          "type": "MONTHLY_FEE",
+          "amount": 3000,
+          "paymentDate": "2026-09-03T00:00:00.000Z",
+          "note": null,
+          "createdAt": "2026-09-03T18:49:47.000Z"
+        }
+      ]
+    }
+  ]
+}

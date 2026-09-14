@@ -44,6 +44,54 @@ export const LEAD_STATUS_COLORS: Record<LeadStatus, string> = {
   ON_HOLD: "bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-300",
 };
 
+export const TASK_STATUSES = ["PENDING", "ONGOING", "CLOSED"] as const;
+export type TaskStatus = (typeof TASK_STATUSES)[number];
+
+export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
+  PENDING: "Pending",
+  ONGOING: "Ongoing",
+  CLOSED: "Closed",
+};
+
+export const TASK_STATUS_COLORS: Record<TaskStatus, string> = {
+  PENDING: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200",
+  ONGOING: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  CLOSED: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+};
+
+export const TASK_PRIORITIES = ["LOW", "MEDIUM", "HIGH"] as const;
+export type TaskPriority = (typeof TASK_PRIORITIES)[number];
+
+export const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = {
+  LOW: "Low",
+  MEDIUM: "Medium",
+  HIGH: "High",
+};
+
+export const TASK_PRIORITY_COLORS: Record<TaskPriority, string> = {
+  LOW: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
+  MEDIUM: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  HIGH: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+};
+
+// Used to sort task lists priority-first (highest priority on top) within a
+// status group — higher number sorts first.
+export const TASK_PRIORITY_ORDER: Record<TaskPriority, number> = {
+  HIGH: 3,
+  MEDIUM: 2,
+  LOW: 1,
+};
+
+export const GENDERS = ["MALE", "FEMALE", "TRANS", "NOT_PREFER"] as const;
+export type Gender = (typeof GENDERS)[number];
+
+export const GENDER_LABELS: Record<Gender, string> = {
+  MALE: "Male",
+  FEMALE: "Female",
+  TRANS: "Trans",
+  NOT_PREFER: "Prefer not to say",
+};
+
 export const LEAD_SOURCES = [
   "LINKEDIN",
   "FACEBOOK",

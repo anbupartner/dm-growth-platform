@@ -8,9 +8,9 @@ import { buildProposalData, type ConsultantOverride } from "@/lib/pdf/build-prop
 import type { ReportData } from "@/lib/pdf/types";
 import type { ProposalPackage } from "@/lib/pdf/proposal-types";
 import { nextProposalVersion } from "@/lib/versioning";
+import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { tryWritePdfToDisk, tryDeletePdfFromDisk } from "@/lib/pdf-storage";
 
 import { apiErrorResponse } from "@/lib/api-handler";
 
@@ -180,11 +180,12 @@ export async function POST(req: NextRequest) {
 
     const fileName = `${lead.customerId}-${lead.businessName.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-proposal-v${version}.pdf`;
 
-    // Disk write is a best-effort local-dev mirror only (see
-    // src/lib/pdf-storage.ts) — pdfData in the DB row below is the real
-    // source of truth, so a read-only production filesystem never breaks this.
+    // Write the PDF to disk before inserting the row — see the matching
+    // comment in POST /api/reports — so a write failure never leaves an
+    // orphaned proposal row pointing at a PDF that doesn't exist.
     const proposalId = randomUUID();
-    tryWritePdfToDisk(PROPOSALS_DIR, `${proposalId}.pdf`, buffer);
+    fs.mkdirSync(PROPOSALS_DIR, { recursive: true });
+    fs.writeFileSync(path.join(PROPOSALS_DIR, `${proposalId}.pdf`), buffer);
 
     let row;
     try {
@@ -199,7 +200,6 @@ export async function POST(req: NextRequest) {
           termsText: termsText ?? "",
           validUntil: validUntil ? new Date(validUntil) : null,
           pdfFileName: fileName,
-          pdfData: buffer.toString("base64"),
           consultantOverride: consultantOverride ? JSON.stringify(consultantOverride) : null,
           revisionPolicyText: revisionPolicyText ?? null,
           clientResponsibilitiesText: clientResponsibilitiesText ?? null,
@@ -229,7 +229,7 @@ export async function POST(req: NextRequest) {
         })
         .returning();
     } catch (insertErr) {
-      tryDeletePdfFromDisk(PROPOSALS_DIR, `${proposalId}.pdf`);
+      fs.rmSync(path.join(PROPOSALS_DIR, `${proposalId}.pdf`), { force: true });
       throw insertErr;
     }
 

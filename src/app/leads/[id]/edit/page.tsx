@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api-client";
 import { PageHeading, Card, Field, Input, Select, Textarea, Button, Spinner } from "@/components/ui";
-import { LEAD_SOURCES, LEAD_SOURCE_LABELS, BUSINESS_GOALS, INDUSTRIES, COUNTRIES } from "@/lib/constants";
+import { LEAD_SOURCES, LEAD_SOURCE_LABELS, BUSINESS_GOALS, INDUSTRIES, COUNTRIES, GENDERS, GENDER_LABELS } from "@/lib/constants";
 
 // Edits the same fields the "Add Lead" form captures, plus Has Website and
 // Quote Value since both are shown on the lead detail page's info card and
@@ -17,6 +17,7 @@ import { LEAD_SOURCES, LEAD_SOURCE_LABELS, BUSINESS_GOALS, INDUSTRIES, COUNTRIES
 interface LeadRecord {
   id: string;
   customerName: string;
+  gender?: string | null;
   businessName: string;
   email?: string | null;
   phone?: string | null;
@@ -47,6 +48,7 @@ export default function EditLeadPage() {
   const [whatsappSameAsPhone, setWhatsappSameAsPhone] = useState(true);
   const [form, setForm] = useState({
     customerName: "",
+    gender: "",
     businessName: "",
     email: "",
     phone: "",
@@ -69,6 +71,7 @@ export default function EditLeadPage() {
     api.get<{ lead: LeadRecord }>(`/api/leads/${id}`).then(({ lead }) => {
       setForm({
         customerName: lead.customerName ?? "",
+        gender: lead.gender ?? "",
         businessName: lead.businessName ?? "",
         email: lead.email ?? "",
         phone: lead.phone ?? "",
@@ -129,6 +132,14 @@ export default function EditLeadPage() {
             </Field>
             <Field label="Business Name *">
               <Input value={form.businessName} onChange={(e) => set("businessName", e.target.value)} required />
+            </Field>
+            <Field label="Gender">
+              <Select value={form.gender} onChange={(e) => set("gender", e.target.value)}>
+                <option value="">Select…</option>
+                {GENDERS.map((g) => (
+                  <option key={g} value={g}>{GENDER_LABELS[g]}</option>
+                ))}
+              </Select>
             </Field>
             <Field label="Email">
               <Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} />

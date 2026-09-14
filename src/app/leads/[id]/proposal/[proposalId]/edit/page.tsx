@@ -49,7 +49,7 @@ import {
   type ProposalNavSection,
   useSectionScrollSpy,
 } from "@/components/ProposalBuilderFields";
-import { DEFAULT_SERVICE_PACKAGES, type ProposalPackage, type ServicePackagesConfig } from "@/lib/pdf/proposal-types";
+import { DEFAULT_SERVICE_PACKAGES, normalizeServicePackages, type ProposalPackage, type ServicePackagesConfig } from "@/lib/pdf/proposal-types";
 import type { ReportData } from "@/lib/pdf/types";
 import { Download } from "lucide-react";
 
@@ -444,7 +444,7 @@ export default function EditProposalPage() {
       .then((s) => {
         if (!s.servicePackagesJson) return;
         try {
-          setServicePackages(JSON.parse(s.servicePackagesJson));
+          setServicePackages(normalizeServicePackages(JSON.parse(s.servicePackagesJson)));
         } catch {
           /* keep the starter template if saved JSON is somehow invalid */
         }

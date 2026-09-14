@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { Card, CardHeader, Field, Input, Textarea, Badge, Select } from "@/components/ui";
-import type { ProposalPackage, ServicePackagesConfig } from "@/lib/pdf/proposal-types";
+import { groupServicesByCategory, type ProposalPackage, type ServicePackagesConfig } from "@/lib/pdf/proposal-types";
 import { formatCurrencyDisplay } from "@/lib/calculations";
 import { Star, Check } from "lucide-react";
 
@@ -221,6 +221,26 @@ export function ProposalPackagesGrid({
     onUpdate(i, { selectedServiceKeys: nextKeys, selectedServiceLabels: labels });
   }
 
+  // Whether each package's Included-Services <details> is open, keyed by
+  // package key. Defaults to open only while nothing's selected yet (so a
+  // brand-new package starts ready to check boxes) — but once the consultant
+  // has explicitly opened/closed it (recorded in this map via onToggle), that
+  // choice sticks regardless of how many boxes get checked afterward. Without
+  // this, deriving `open` straight from `selectedServiceKeys.length === 0` on
+  // every render meant checking the very first box slammed the panel shut
+  // mid-click, since React re-syncs a <details>'s `open` attribute to
+  // whatever's passed each render.
+  const [openServicesFor, setOpenServicesFor] = useState<Record<string, boolean>>({});
+  function isServicesOpen(pkg: ProposalPackage): boolean {
+    return openServicesFor[pkg.key] ?? (pkg.selectedServiceKeys?.length ?? 0) === 0;
+  }
+
+  // Group → Category → Services view of the master list, for the Included
+  // Services picker below — with 100+ services across 16 categories, a
+  // single flat wrapped chip list would be unusable, so it's sectioned the
+  // same way as the Settings > Master Services List editor.
+  const groupedServices = servicePackages ? groupServicesByCategory(servicePackages) : [];
+
   return (
     <div className="mb-4">
       <div className="mb-3">
@@ -287,7 +307,9 @@ export function ProposalPackagesGrid({
             {servicePackages && servicePackages.services.length > 0 ? (
               <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <div className="flex items-center justify-between mb-2 gap-2">
-                  <p className="text-xs font-medium text-slate-600 dark:text-slate-300">Services Included</p>
+                  <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                    Services Included {(pkg.selectedServiceKeys?.length ?? 0) > 0 && `(${pkg.selectedServiceKeys!.length})`}
+                  </p>
                   {servicePackages.tiers.length > 0 && (
                     <Select value="" onChange={(e) => e.target.value && applyTier(i, e.target.value)} className="w-auto text-xs py-1">
                       <option value="">Load a preset…</option>
@@ -299,26 +321,60 @@ export function ProposalPackagesGrid({
                     </Select>
                   )}
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {servicePackages.services.map((svc) => {
-                    const checked = (pkg.selectedServiceKeys ?? []).includes(svc.key);
+                <details
+                  className="space-y-2"
+                  open={isServicesOpen(pkg)}
+                  onToggle={(e) => {
+                    // Read the native open/closed state synchronously — React
+                    // pools this event, so grabbing it inside the setState
+                    // updater below (which can run after the handler
+                    // returns) reads a nulled-out currentTarget instead.
+                    const nowOpen = e.currentTarget.open;
+                    setOpenServicesFor((prev) => ({ ...prev, [pkg.key]: nowOpen }));
+                  }}
+                >
+                  <summary className="cursor-pointer select-none text-[11px] text-indigo-600 dark:text-indigo-400 mb-1.5">
+                    {(pkg.selectedServiceKeys?.length ?? 0) > 0 ? "Edit selected services" : "Choose services"}
+                  </summary>
+                  <div className="space-y-2">
+                  {groupedServices.map(({ group, categories }) => {
+                    const visibleCategories = categories.filter((c) => c.services.length > 0);
+                    if (visibleCategories.length === 0) return null;
                     return (
-                      <button
-                        key={svc.key}
-                        type="button"
-                        onClick={() => toggleService(i, pkg, svc.key)}
-                        className={
-                          checked
-                            ? "text-[11px] px-2 py-1 rounded-full bg-indigo-600 text-white flex items-center gap-1"
-                            : "text-[11px] px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center gap-1"
-                        }
-                      >
-                        {checked && <Check size={10} />}
-                        {svc.label}
-                      </button>
+                      <div key={group}>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-1">{group}</p>
+                        <div className="space-y-1.5">
+                          {visibleCategories.map(({ category, services }) => (
+                            <div key={category.key}>
+                              <p className="text-[10px] text-slate-400 mb-1">{category.label}</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {services.map((svc) => {
+                                  const checked = (pkg.selectedServiceKeys ?? []).includes(svc.key);
+                                  return (
+                                    <button
+                                      key={svc.key}
+                                      type="button"
+                                      onClick={() => toggleService(i, pkg, svc.key)}
+                                      className={
+                                        checked
+                                          ? "text-[11px] px-2 py-1 rounded-full bg-indigo-600 text-white flex items-center gap-1"
+                                          : "text-[11px] px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center gap-1"
+                                      }
+                                    >
+                                      {checked && <Check size={10} />}
+                                      {svc.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     );
                   })}
-                </div>
+                  </div>
+                </details>
                 {matchedTier && (
                   <p className="text-xs text-emerald-600 mt-2">
                     Matches your &quot;{matchedTier.name}&quot; package ({formatCurrencyDisplay(matchedTier.price, pkg.currency)}/month).{" "}

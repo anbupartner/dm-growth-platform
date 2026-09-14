@@ -31,6 +31,7 @@ export const leads = sqliteTable("leads", {
   id: id(),
   customerId: text("customer_id").notNull().unique(), // e.g. LEAD-0001
   customerName: text("customer_name").notNull(),
+  gender: text("gender"), // MALE | FEMALE | TRANS | NOT_PREFER — see GENDERS in constants.ts; optional
   businessName: text("business_name").notNull(),
   email: text("email"),
   phone: text("phone"),
@@ -173,11 +174,6 @@ export const reportSnapshots = sqliteTable("report_snapshots", {
   // just not editable — regenerate to get an editable version).
   reportData: text("report_data"),
   pdfFileName: text("pdf_file_name"),
-  // Base64-encoded PDF bytes — the actual source of truth for downloads (see
-  // src/lib/pdf-storage.ts). Nullable because rows from before this column
-  // existed only have a copy on local disk (or, for rows imported from the
-  // pre-Turso production export, no PDF at all — those regenerate fresh).
-  pdfData: text("pdf_data"),
   createdAt: timestamps.createdAt,
 });
 
@@ -198,10 +194,6 @@ export const proposals = sqliteTable("proposals", {
   termsText: text("terms_text"), // payment terms / what's included, free text
   validUntil: integer("valid_until", { mode: "timestamp" }),
   pdfFileName: text("pdf_file_name"),
-  // Base64-encoded PDF bytes — the actual source of truth for downloads (see
-  // src/lib/pdf-storage.ts). Nullable for the same reason as
-  // reportSnapshots.pdfData above.
-  pdfData: text("pdf_data"),
   // Optional per-proposal override of the "prepared by" identity shown on
   // the PDF's cover page, header/footer and closing CTA (consultant name,
   // company, phone, WhatsApp, email, website) — JSON, only the fields the
@@ -372,6 +364,44 @@ export const billingPayments = sqliteTable("billing_payments", {
   paymentDate: integer("payment_date", { mode: "timestamp" }).notNull(),
   note: text("note"),
   createdAt: timestamps.createdAt,
+});
+
+// --- Supporting documents (contracts, ID/business proof, brand assets, etc.)
+// Stored inline as a data: URL (base64), same pattern as consultantSettings'
+// logoUrl — deliberately NOT written to local disk, since Netlify's function
+// filesystem is read-only (the exact bug the report/proposal PDF-storage fix
+// existed to work around). fileSize is stored separately so the list view
+// can show it without decoding fileData. Restricted (by the API route, not
+// here) to common document/image types, 10MB per file.
+export const leadDocuments = sqliteTable("lead_documents", {
+  id: id(),
+  leadId: text("lead_id")
+    .notNull()
+    .references(() => leads.id, { onDelete: "cascade" }),
+  fileName: text("file_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  fileSize: integer("file_size").notNull(), // bytes
+  fileData: text("file_data").notNull(), // data:<mime>;base64,<...>
+  createdAt: timestamps.createdAt,
+});
+
+// --- Daily to-do's (the consultant's own task list, not tied to any lead) --
+// Deliberately general-purpose ("renew hosting", "prepare invoice") rather
+// than lead-scoped follow-ups — those already exist as `followUps`. Every
+// task is "for" a specific day (taskDate, defaults to today when created)
+// so the tab can show "today's list" while still letting older still-open
+// tasks be found via an "all open" view — see the Daily To-Do's page for
+// how taskDate is used to bucket/query.
+export const dailyTasks = sqliteTable("daily_tasks", {
+  id: id(),
+  title: text("title").notNull(),
+  note: text("note"),
+  status: text("status").notNull().default("PENDING"), // PENDING | ONGOING | CLOSED
+  priority: text("priority").notNull().default("MEDIUM"), // LOW | MEDIUM | HIGH
+  taskDate: integer("task_date", { mode: "timestamp" }).notNull(),
+  endDate: integer("end_date", { mode: "timestamp" }), // optional target/deadline date
+  reminderAt: integer("reminder_at", { mode: "timestamp" }), // optional reminder pop-up moment
+  ...timestamps,
 });
 
 // --- Consultant settings (single row) --------------------------------------

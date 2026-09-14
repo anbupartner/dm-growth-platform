@@ -5,7 +5,13 @@ import clsx from "clsx";
 import { api } from "@/lib/api-client";
 import { PageHeading, Card, Field, Input, Textarea, Button, Spinner, Select } from "@/components/ui";
 import { CURRENCIES } from "@/lib/constants";
-import { DEFAULT_SERVICE_PACKAGES, type ServicePackagesConfig } from "@/lib/pdf/proposal-types";
+import {
+  DEFAULT_SERVICE_PACKAGES,
+  UNCATEGORIZED_CATEGORY_KEY,
+  normalizeServicePackages,
+  groupServicesByCategory,
+  type ServicePackagesConfig,
+} from "@/lib/pdf/proposal-types";
 import { Trash2, BellRing } from "lucide-react";
 
 interface Settings {
@@ -65,7 +71,7 @@ export default function SettingsPage() {
       setSettings(s);
       if (s.servicePackagesJson) {
         try {
-          setServicePackages(JSON.parse(s.servicePackagesJson));
+          setServicePackages(normalizeServicePackages(JSON.parse(s.servicePackagesJson)));
         } catch {
           setServicePackages(DEFAULT_SERVICE_PACKAGES);
         }
@@ -107,18 +113,51 @@ export default function SettingsPage() {
     updateServicePackages({ ...servicePackages, services: servicePackages.services.map((s) => (s.key === key ? { ...s, label } : s)) });
   }
 
-  function addService() {
-    const baseKey = "new-service";
+  function addService(categoryKey: string) {
+    const baseKey = `${categoryKey}__new-service`;
     let key = baseKey;
     let n = 1;
     while (servicePackages.services.some((s) => s.key === key)) key = `${baseKey}-${++n}`;
-    updateServicePackages({ ...servicePackages, services: [...servicePackages.services, { key, label: "New Service" }] });
+    updateServicePackages({ ...servicePackages, services: [...servicePackages.services, { key, label: "New Service", categoryKey }] });
   }
 
   function removeService(key: string) {
     updateServicePackages({
+      ...servicePackages,
       services: servicePackages.services.filter((s) => s.key !== key),
       tiers: servicePackages.tiers.map((t) => ({ ...t, serviceKeys: t.serviceKeys.filter((k) => k !== key) })),
+    });
+  }
+
+  function addCategory() {
+    const baseKey = "category";
+    let key = baseKey;
+    let n = 1;
+    while (servicePackages.categories.some((c) => c.key === key)) key = `${baseKey}-${++n}`;
+    updateServicePackages({ ...servicePackages, categories: [...servicePackages.categories, { key, label: "New Category", group: "Other" }] });
+  }
+
+  function updateCategoryLabel(key: string, label: string) {
+    updateServicePackages({ ...servicePackages, categories: servicePackages.categories.map((c) => (c.key === key ? { ...c, label } : c)) });
+  }
+
+  function updateCategoryGroup(key: string, group: string) {
+    updateServicePackages({ ...servicePackages, categories: servicePackages.categories.map((c) => (c.key === key ? { ...c, group } : c)) });
+  }
+
+  // Removing a category takes its services with it (a service always
+  // belongs to exactly one category, so leaving them behind would just
+  // silently re-home them into "Other Services") — same cascade-into-tiers
+  // behavior as removeService above. The always-present "Other Services"
+  // catch-all can't be removed since normalizeServicePackages would just
+  // recreate it empty on the next load anyway.
+  function removeCategory(key: string) {
+    if (key === UNCATEGORIZED_CATEGORY_KEY) return;
+    const removedKeys = new Set(servicePackages.services.filter((s) => s.categoryKey === key).map((s) => s.key));
+    updateServicePackages({
+      categories: servicePackages.categories.filter((c) => c.key !== key),
+      services: servicePackages.services.filter((s) => s.categoryKey !== key),
+      tiers: servicePackages.tiers.map((t) => ({ ...t, serviceKeys: t.serviceKeys.filter((k) => !removedKeys.has(k)) })),
     });
   }
 
@@ -213,6 +252,11 @@ export default function SettingsPage() {
   }
 
   if (!settings) return <div className="flex justify-center py-20"><Spinner /></div>;
+
+  // Group → Category → Services view of the master list, shared by the
+  // Master Services List editor below and each tier's Included Services
+  // picker — both just walk this rather than re-deriving the grouping.
+  const groupedServices = groupServicesByCategory(servicePackages);
 
   return (
     <div className="max-w-2xl">
@@ -391,25 +435,85 @@ export default function SettingsPage() {
           </p>
         </div>
 
-        <div>
-          <p className="text-xs font-medium text-slate-600 dark:text-slate-300 mb-2">Master Services List</p>
-          <div className="flex flex-wrap items-center gap-2">
-            {servicePackages.services.map((svc) => (
-              <div key={svc.key} className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-full pl-3 pr-1 py-1">
-                <input
-                  value={svc.label}
-                  onChange={(e) => updateServiceLabel(svc.key, e.target.value)}
-                  className="bg-transparent text-xs w-24 focus:outline-none text-slate-700 dark:text-slate-200"
-                />
-                <button type="button" onClick={() => removeService(svc.key)} className="text-slate-400 hover:text-red-500" title="Remove service">
-                  <Trash2 size={11} />
-                </button>
+        <div className="space-y-5">
+          <p className="text-xs font-medium text-slate-600 dark:text-slate-300">Master Services List</p>
+          {groupedServices.map(({ group, categories }) => {
+            const visibleCategories = categories.filter((c) => !(c.category.key === UNCATEGORIZED_CATEGORY_KEY && c.services.length === 0));
+            if (visibleCategories.length === 0) return null;
+            return (
+              <div key={group} className="space-y-2.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400">{group}</p>
+                <div className="space-y-2.5">
+                  {visibleCategories.map(({ category, services }) => (
+                    <div key={category.key} className="rounded-lg border border-slate-100 dark:border-slate-800 p-3">
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <input
+                          value={category.label}
+                          onChange={(e) => updateCategoryLabel(category.key, e.target.value)}
+                          className="bg-transparent text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none min-w-0 flex-1"
+                        />
+                        {category.key !== UNCATEGORIZED_CATEGORY_KEY && (
+                          <select
+                            value={category.group}
+                            onChange={(e) => updateCategoryGroup(category.key, e.target.value)}
+                            title="Which section this category is grouped under"
+                            className="shrink-0 bg-transparent text-[11px] text-slate-400 focus:outline-none border border-slate-200 dark:border-slate-700 rounded px-1 py-0.5"
+                          >
+                            {["Organic", "In-Organic", "Tracking & Reporting", "Other"].map((g) => (
+                              <option key={g} value={g}>
+                                {g}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        {category.key !== UNCATEGORIZED_CATEGORY_KEY && (
+                          <button
+                            type="button"
+                            onClick={() => removeCategory(category.key)}
+                            className="text-slate-300 hover:text-red-500 shrink-0"
+                            title="Remove this category and its services"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {services.map((svc) => (
+                          <div key={svc.key} className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-full pl-3 pr-1 py-1">
+                            <input
+                              value={svc.label}
+                              onChange={(e) => updateServiceLabel(svc.key, e.target.value)}
+                              // Sized to fit the label itself (with a little
+                              // slack) rather than a fixed width — a flat
+                              // w-28 truncated longer names like "Conversion
+                              // Optimization" with no visual cue anything was
+                              // cut off, since this is a plain <input>, not
+                              // text with its own overflow affordance.
+                              style={{ width: `${Math.max(6, svc.label.length + 2)}ch` }}
+                              className="bg-transparent text-xs focus:outline-none text-slate-700 dark:text-slate-200"
+                            />
+                            <button type="button" onClick={() => removeService(svc.key)} className="text-slate-400 hover:text-red-500" title="Remove service">
+                              <Trash2 size={11} />
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => addService(category.key)}
+                          className="text-[11px] px-2.5 py-1.5 rounded-full border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                        >
+                          + Add
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            ))}
-            <Button type="button" variant="secondary" size="sm" onClick={addService}>
-              + Add Service
-            </Button>
-          </div>
+            );
+          })}
+          <Button type="button" variant="secondary" size="sm" onClick={addCategory}>
+            + Add Category
+          </Button>
         </div>
 
         <div className="space-y-4">
@@ -424,31 +528,49 @@ export default function SettingsPage() {
                   <Input type="number" min={0} value={tier.price || ""} onChange={(e) => updateTier(tier.key, { price: Number(e.target.value) || 0 })} />
                 </Field>
               </div>
-              <div className="mt-3">
-                <p className="text-xs text-slate-500 mb-1.5">
-                  Included services — leave all unchecked for a tier that isn&apos;t defined by specific services (use the description
-                  override below instead).
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {servicePackages.services.map((svc) => {
-                    const checked = tier.serviceKeys.includes(svc.key);
+              <details className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <summary className="cursor-pointer select-none text-xs text-slate-500 mb-1.5">
+                  Included services ({tier.serviceKeys.length} selected) — leave all unchecked for a tier that isn&apos;t defined by
+                  specific services (use the description override below instead)
+                </summary>
+                <div className="mt-2 space-y-2.5">
+                  {groupedServices.map(({ group, categories }) => {
+                    const visibleCategories = categories.filter((c) => c.services.length > 0);
+                    if (visibleCategories.length === 0) return null;
                     return (
-                      <button
-                        key={svc.key}
-                        type="button"
-                        onClick={() => toggleTierService(tier.key, svc.key)}
-                        className={
-                          checked
-                            ? "text-[11px] px-2 py-1 rounded-full bg-indigo-600 text-white"
-                            : "text-[11px] px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
-                        }
-                      >
-                        {svc.label}
-                      </button>
+                      <div key={group}>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-1">{group}</p>
+                        <div className="space-y-1.5">
+                          {visibleCategories.map(({ category, services }) => (
+                            <div key={category.key}>
+                              <p className="text-[10px] text-slate-400 mb-1">{category.label}</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {services.map((svc) => {
+                                  const checked = tier.serviceKeys.includes(svc.key);
+                                  return (
+                                    <button
+                                      key={svc.key}
+                                      type="button"
+                                      onClick={() => toggleTierService(tier.key, svc.key)}
+                                      className={
+                                        checked
+                                          ? "text-[11px] px-2 py-1 rounded-full bg-indigo-600 text-white"
+                                          : "text-[11px] px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+                                      }
+                                    >
+                                      {svc.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
-              </div>
+              </details>
               <div className="mt-3">
                 <Field
                   label="Description override (optional)"

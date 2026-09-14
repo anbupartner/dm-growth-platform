@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { leads, followUps, assessments, scenarios, reportSnapshots, proposals, leadBilling, billingPayments } from "@/lib/db/schema";
+import { leads, followUps, assessments, scenarios, reportSnapshots, proposals, leadBilling, billingPayments, leadDocuments } from "@/lib/db/schema";
 import { eq, desc } from "drizzle-orm";
+import fs from "node:fs";
 import path from "node:path";
-import { tryDeletePdfFromDisk } from "@/lib/pdf-storage";
 
 import { apiErrorResponse } from "@/lib/api-handler";
 
@@ -13,7 +13,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/leads/[id]"
     const lead = await db.query.leads.findFirst({ where: eq(leads.id, id) });
     if (!lead) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    const [followUpRows, assessmentRows, scenarioRows, reportRows, proposalRows, billingRow, paymentRows] = await Promise.all([
+    const [followUpRows, assessmentRows, scenarioRows, reportRows, proposalRows, billingRow, paymentRows, documentRows] = await Promise.all([
       db.select().from(followUps).where(eq(followUps.leadId, id)).orderBy(desc(followUps.createdAt)),
       db.select().from(assessments).where(eq(assessments.leadId, id)).orderBy(desc(assessments.createdAt)),
       db.select().from(scenarios).where(eq(scenarios.leadId, id)).orderBy(desc(scenarios.createdAt)),
@@ -36,6 +36,21 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/leads/[id]"
       db.select().from(proposals).where(eq(proposals.leadId, id)).orderBy(desc(proposals.version)),
       db.query.leadBilling.findFirst({ where: eq(leadBilling.leadId, id) }),
       db.select().from(billingPayments).where(eq(billingPayments.leadId, id)).orderBy(desc(billingPayments.paymentDate)),
+      // fileData omitted — this list is just for the Documents panel
+      // (name/type/size/date); the actual bytes are fetched per-document
+      // from GET /api/leads/[id]/documents/[docId] only when downloaded.
+      db
+        .select({
+          id: leadDocuments.id,
+          leadId: leadDocuments.leadId,
+          fileName: leadDocuments.fileName,
+          mimeType: leadDocuments.mimeType,
+          fileSize: leadDocuments.fileSize,
+          createdAt: leadDocuments.createdAt,
+        })
+        .from(leadDocuments)
+        .where(eq(leadDocuments.leadId, id))
+        .orderBy(desc(leadDocuments.createdAt)),
     ]);
 
     // Collapse the full reportData text down to a boolean the UI can check
@@ -67,6 +82,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/leads/[id]"
       proposals: proposalRows,
       billing,
       payments: paymentRows,
+      documents: documentRows,
     });
   } catch (err) {
     return apiErrorResponse(err, "GET /api/leads/[id]");
@@ -119,10 +135,14 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/leads/[i
       db.select({ id: reportSnapshots.id }).from(reportSnapshots).where(eq(reportSnapshots.leadId, id)),
       db.select({ id: proposals.id }).from(proposals).where(eq(proposals.leadId, id)),
     ]);
-    const reportsDir = path.join(process.cwd(), "data", "reports");
-    const proposalsDir = path.join(process.cwd(), "data", "proposals");
-    for (const r of reportRows) tryDeletePdfFromDisk(reportsDir, `${r.id}.pdf`);
-    for (const p of proposalRows) tryDeletePdfFromDisk(proposalsDir, `${p.id}.pdf`);
+    for (const r of reportRows) {
+      const p = path.join(process.cwd(), "data", "reports", `${r.id}.pdf`);
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    }
+    for (const p of proposalRows) {
+      const filePath = path.join(process.cwd(), "data", "proposals", `${p.id}.pdf`);
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    }
 
     await db.delete(leads).where(eq(leads.id, id));
     return NextResponse.json({ ok: true });

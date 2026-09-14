@@ -30,6 +30,7 @@ export async function POST(req: NextRequest) {
       .values({
         customerId,
         customerName: body.customerName,
+        gender: body.gender ?? null,
         businessName: body.businessName,
         email: body.email ?? null,
         phone: body.phone ?? null,

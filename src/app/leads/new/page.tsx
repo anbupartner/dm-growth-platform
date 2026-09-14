@@ -4,7 +4,7 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api-client";
 import { PageHeading, Card, Field, Input, Select, Textarea, Button, Spinner } from "@/components/ui";
-import { LEAD_SOURCES, LEAD_SOURCE_LABELS, BUSINESS_GOALS, INDUSTRIES, COUNTRIES } from "@/lib/constants";
+import { LEAD_SOURCES, LEAD_SOURCE_LABELS, BUSINESS_GOALS, INDUSTRIES, COUNTRIES, GENDERS, GENDER_LABELS } from "@/lib/constants";
 
 export default function NewLeadPage() {
   return (
@@ -30,6 +30,7 @@ function NewLeadPageInner() {
   const [whatsappSameAsPhone, setWhatsappSameAsPhone] = useState(true);
   const [form, setForm] = useState({
     customerName: "",
+    gender: "",
     businessName: "",
     email: "",
     phone: "",
@@ -87,6 +88,14 @@ function NewLeadPageInner() {
             </Field>
             <Field label="Business Name *">
               <Input value={form.businessName} onChange={(e) => set("businessName", e.target.value)} required />
+            </Field>
+            <Field label="Gender">
+              <Select value={form.gender} onChange={(e) => set("gender", e.target.value)}>
+                <option value="">Select…</option>
+                {GENDERS.map((g) => (
+                  <option key={g} value={g}>{GENDER_LABELS[g]}</option>
+                ))}
+              </Select>
             </Field>
             <Field label="Email">
               <Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} />

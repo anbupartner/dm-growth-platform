@@ -9,6 +9,7 @@ import {
   FilePlus2,
   FileText,
   CalendarClock,
+  ListChecks,
   Handshake,
   SlidersHorizontal,
   Database,
@@ -20,6 +21,9 @@ import {
 import clsx from "clsx";
 import { api } from "@/lib/api-client";
 import { useFollowUpAlerts } from "@/hooks/useFollowUpAlerts";
+import { useDailyTaskAlerts } from "@/hooks/useDailyTaskAlerts";
+import { useActivityToasts } from "@/hooks/useActivityToasts";
+import { ToastStack } from "@/components/ToastStack";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -27,6 +31,7 @@ const NAV = [
   { href: "/assessment/new", label: "New Assessment", icon: FilePlus2 },
   { href: "/reports", label: "Reports", icon: FileText },
   { href: "/follow-ups", label: "Follow-ups", icon: CalendarClock },
+  { href: "/daily-tasks", label: "Daily To-Do's", icon: ListChecks },
   { href: "/proposals", label: "Proposals", icon: Handshake },
   { href: "/scenarios", label: "Scenarios", icon: SlidersHorizontal },
   { href: "/benchmarks", label: "Benchmarks", icon: Database },
@@ -63,6 +68,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   const followUpBadgeCount = useFollowUpAlerts(desktopNotificationsEnabled);
+  const ongoingTaskCount = useDailyTaskAlerts();
+  const { toasts, dismiss } = useActivityToasts();
 
   return (
     <div className="flex min-h-screen w-full bg-slate-50 dark:bg-slate-950">
@@ -78,7 +85,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {NAV.map((item) => {
             const Icon = item.icon;
             const active = isActive(pathname, item.href);
-            const showBadge = item.href === "/follow-ups" && followUpBadgeCount > 0;
+            const showFollowUpBadge = item.href === "/follow-ups" && followUpBadgeCount > 0;
+            const showTaskBadge = item.href === "/daily-tasks" && ongoingTaskCount > 0;
             return (
               <Link
                 key={item.href}
@@ -92,9 +100,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               >
                 <Icon size={18} />
                 <span className="flex-1">{item.label}</span>
-                {showBadge && (
+                {showFollowUpBadge && (
                   <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold">
                     {followUpBadgeCount}
+                  </span>
+                )}
+                {showTaskBadge && (
+                  <span
+                    className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full bg-amber-500 text-white text-[10px] font-semibold"
+                    title="Ongoing tasks"
+                  >
+                    {ongoingTaskCount}
                   </span>
                 )}
               </Link>
@@ -134,7 +150,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 {NAV.map((item) => {
                   const Icon = item.icon;
                   const active = isActive(pathname, item.href);
-                  const showBadge = item.href === "/follow-ups" && followUpBadgeCount > 0;
+                  const showFollowUpBadge = item.href === "/follow-ups" && followUpBadgeCount > 0;
+                  const showTaskBadge = item.href === "/daily-tasks" && ongoingTaskCount > 0;
                   return (
                     <Link
                       key={item.href}
@@ -149,9 +166,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     >
                       <Icon size={18} />
                       <span className="flex-1">{item.label}</span>
-                      {showBadge && (
+                      {showFollowUpBadge && (
                         <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold">
                           {followUpBadgeCount}
+                        </span>
+                      )}
+                      {showTaskBadge && (
+                        <span
+                          className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full bg-amber-500 text-white text-[10px] font-semibold"
+                          title="Ongoing tasks"
+                        >
+                          {ongoingTaskCount}
                         </span>
                       )}
                     </Link>
@@ -202,6 +227,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
         </nav>
       </div>
+
+      <ToastStack toasts={toasts} onDismiss={dismiss} />
     </div>
   );
 }

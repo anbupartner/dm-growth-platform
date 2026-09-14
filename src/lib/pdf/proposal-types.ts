@@ -208,9 +208,23 @@ export interface ProposalData {
 // here are just the current template — once a package is built from them,
 // the package stores its own frozen copy (price, selectedServiceKeys), so
 // editing a tier in Settings later never changes an already-sent proposal.
+//
+// Categorized master list: every individual service belongs to one named
+// category (e.g. "SEO Services"), and every category belongs to one of a
+// handful of broad groups (Organic / In-Organic / Tracking & Reporting) used
+// purely to section the Settings UI. A category is a first-class entity
+// (not just an implied grouping) so it can exist — and be added to — before
+// it has any services in it.
+export interface ServiceCategory {
+  key: string;
+  label: string;
+  group: string;
+}
+
 export interface ServiceOption {
   key: string;
   label: string;
+  categoryKey: string;
 }
 
 export interface ServiceTierConfig {
@@ -226,46 +240,185 @@ export interface ServiceTierConfig {
 }
 
 export interface ServicePackagesConfig {
+  categories: ServiceCategory[];
   services: ServiceOption[];
   tiers: ServiceTierConfig[];
 }
 
+// Every category not in this list (a consultant's own custom group name)
+// sorts after these, alphabetically. "Other" is always last — it's the
+// catch-all group for the always-present uncategorized bucket below.
+const GROUP_ORDER = ["Organic", "In-Organic", "Tracking & Reporting", "Other"];
+
+// A service's categoryKey always resolves to a real category — a service
+// loaded from older/malformed saved JSON with no (or an unrecognized)
+// categoryKey falls back to this always-present bucket instead of vanishing
+// or crashing the Settings page.
+export const UNCATEGORIZED_CATEGORY_KEY = "uncategorized";
+const UNCATEGORIZED_CATEGORY: ServiceCategory = { key: UNCATEGORIZED_CATEGORY_KEY, label: "Other Services", group: "Other" };
+
+// Repairs whatever comes back from JSON.parse(consultantSettings.servicePackagesJson)
+// (including the pre-categories shape this app used to save) into the current
+// ServicePackagesConfig shape: ensures the catch-all category always exists,
+// and re-homes any service whose categoryKey doesn't match a real category
+// into it. Never drops a service or a tier — only ever adds the fallback
+// category and/or repoints a dangling categoryKey.
+export function normalizeServicePackages(raw: unknown): ServicePackagesConfig {
+  const cfg = (raw && typeof raw === "object" ? raw : {}) as Partial<ServicePackagesConfig>;
+  const categories = Array.isArray(cfg.categories)
+    ? cfg.categories.filter((c): c is ServiceCategory => !!c && typeof c.key === "string")
+    : [];
+  if (!categories.some((c) => c.key === UNCATEGORIZED_CATEGORY_KEY)) categories.push(UNCATEGORIZED_CATEGORY);
+  const categoryKeys = new Set(categories.map((c) => c.key));
+
+  const services = (Array.isArray(cfg.services) ? cfg.services : [])
+    .filter((s): s is ServiceOption & { categoryKey?: string } => !!s && typeof s.key === "string")
+    .map((s) => ({
+      key: s.key,
+      label: s.label ?? s.key,
+      categoryKey: typeof s.categoryKey === "string" && categoryKeys.has(s.categoryKey) ? s.categoryKey : UNCATEGORIZED_CATEGORY_KEY,
+    }));
+
+  const tiers = Array.isArray(cfg.tiers) ? cfg.tiers : [];
+
+  return { categories, services, tiers };
+}
+
+export interface ServiceCategoryView {
+  category: ServiceCategory;
+  services: ServiceOption[];
+}
+
+export interface ServiceGroupView {
+  group: string;
+  categories: ServiceCategoryView[];
+}
+
+// Reshapes the flat categories/services arrays into Group → Category →
+// Services for rendering (Settings' Master Services List, and the Included
+// Services picker on proposal package cards) — both consumers just walk this
+// once rather than re-deriving the grouping themselves.
+export function groupServicesByCategory(config: ServicePackagesConfig): ServiceGroupView[] {
+  const byCategory = new Map<string, ServiceCategoryView>();
+  for (const category of config.categories) byCategory.set(category.key, { category, services: [] });
+  for (const service of config.services) {
+    byCategory.get(service.categoryKey)?.services.push(service);
+  }
+
+  const byGroup = new Map<string, ServiceCategoryView[]>();
+  for (const entry of byCategory.values()) {
+    const list = byGroup.get(entry.category.group) ?? [];
+    list.push(entry);
+    byGroup.set(entry.category.group, list);
+  }
+
+  return [...byGroup.entries()]
+    .map(([group, categories]) => ({ group, categories }))
+    .sort((a, b) => {
+      const ai = GROUP_ORDER.indexOf(a.group);
+      const bi = GROUP_ORDER.indexOf(b.group);
+      if (ai === -1 && bi === -1) return a.group.localeCompare(b.group);
+      if (ai === -1) return 1;
+      if (bi === -1) return -1;
+      return ai - bi;
+    });
+}
+
+function slugify(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+// Builds one category plus its services in one step, prefixing every service
+// key with the category key (e.g. "website-cro__landing-pages") — several
+// item names below legitimately repeat across categories (e.g. "Landing
+// Pages" under both Website & CRO and Lead Generation), and the prefix keeps
+// every key globally unique without hand-numbering anything.
+function buildCategory(key: string, label: string, group: string, items: string[]): ServiceCategoryView {
+  return {
+    category: { key, label, group },
+    services: items.map((item) => ({ key: `${key}__${slugify(item)}`, label: item, categoryKey: key })),
+  };
+}
+
 // Starter template shown the first time a consultant opens the new "Service
 // Packages" Settings section, before they've saved their own configuration —
-// exactly the 3 tiers/prices/descriptions given as an example, kept as an
-// editable starting point rather than baked-in, uneditable business logic.
-export const DEFAULT_SERVICE_PACKAGES: ServicePackagesConfig = {
-  services: [
-    { key: "seo", label: "SEO" },
-    { key: "social", label: "Social" },
-    { key: "paid", label: "Paid" },
-    { key: "lead-generation", label: "Lead Generation" },
-    { key: "strategy", label: "Strategy" },
-    { key: "cro", label: "CRO" },
-    { key: "crm", label: "CRM" },
-    { key: "analytics", label: "Analytics" },
-  ],
+// a full digital-marketing service catalogue organized into 16 categories
+// across three groups (Organic / In-Organic / Tracking & Reporting), kept as
+// an editable starting point rather than baked-in, uneditable business logic.
+const DEFAULT_SERVICE_CATEGORIES: ServiceCategoryView[] = [
+  buildCategory("seo-services", "SEO Services", "Organic", [
+    "SEO Audit", "Keyword Research", "On-Page SEO", "Technical SEO", "Local SEO", "Off-Page SEO", "Link Building", "Content Optimization", "AEO/GEO",
+  ]),
+  buildCategory("website-cro", "Website & CRO", "Organic", [
+    "Website Audit", "Landing Pages", "UX Optimization", "Conversion Optimization", "CTA Optimization", "A/B Testing", "CRO Recommendations",
+  ]),
+  buildCategory("content-marketing", "Content Marketing", "Organic", [
+    "Blog Writing", "Case Studies", "SMO Post Content", "Website Content", "Landing Page Content", "SEO Content", "Infographics", "Video Content",
+  ]),
+  buildCategory("online-reputation", "Online Reputation", "Organic", [
+    "Google Business Profile", "Review Management", "Rating Improvement", "Review Response", "Local Listings", "Reputation Monitoring",
+  ]),
+  buildCategory("branding-digital-presence", "Branding & Digital Presence", "Organic", [
+    "Brand Positioning", "Digital Strategy", "Competitor Analysis", "Content Strategy", "Online Brand Visibility",
+  ]),
+  buildCategory("marketing-strategy-consulting", "Marketing Strategy & Consulting", "Organic", [
+    "Digital Audit", "Marketing Roadmap", "Go-to-Market Strategy", "Funnel Strategy", "Budget Planning", "KPI Framework", "Monthly Consulting",
+  ]),
+  buildCategory("performance-marketing", "Performance Marketing", "In-Organic", [
+    "Google Ads", "Meta Ads", "LinkedIn Ads", "Bing Ads", "Search Campaigns", "Display", "Remarketing", "Lead Generation Campaigns", "Campaign Optimization",
+  ]),
+  buildCategory("social-media-marketing", "Social Media Marketing", "In-Organic", [
+    "Facebook", "Instagram", "LinkedIn", "YouTube", "Content Calendar", "Organic Posts", "Reels", "Community Management", "Social Analytics",
+  ]),
+  buildCategory("lead-generation", "Lead Generation", "In-Organic", [
+    "B2B Lead Generation", "B2C Lead Generation", "Landing Pages", "Lead Forms", "Lead Magnets", "MQL Generation", "SQL Qualification", "Lead Nurturing",
+  ]),
+  buildCategory("email-marketing", "Email Marketing", "In-Organic", [
+    "Newsletter", "Promotional Campaigns", "Drip Campaigns", "Lead Nurturing", "Customer Retention", "Email Automation",
+  ]),
+  buildCategory("influencer-creator-marketing", "Influencer / Creator Marketing", "In-Organic", [
+    "Influencer Identification", "Collaboration", "Instagram Creators", "YouTube Creators", "Campaign Management", "Performance Tracking",
+  ]),
+  buildCategory("ooh-marketing", "OOH Marketing", "In-Organic", [
+    "Billboards", "Bus Ads", "Auto/Cab Branding", "Metro Ads", "Railway Ads", "Brochures", "Flyers", "Pamphlets", "Catalogues", "Posters", "Standees",
+  ]),
+  buildCategory("event-activation-marketing", "Event & Activation Marketing", "In-Organic", [
+    "Trade Shows", "Exhibitions", "Product Launches", "Roadshows", "Customer Meets", "Dealer Meets", "Vehicle Branding",
+  ]),
+  buildCategory("crm-marketing-automation", "CRM & Marketing Automation", "Tracking & Reporting", [
+    "CRM Setup", "Lead Pipeline", "Lead Scoring", "Email Automation", "WhatsApp/Email Follow-up", "Segmentation", "Workflow Automation",
+  ]),
+  buildCategory("ga4-gtm-analytics", "GA4 & GTM Analytics", "Tracking & Reporting", [
+    "GA4 Setup", "GTM Setup", "Event Tracking", "Conversion Tracking", "Data Validation", "GA4 Audit", "Dashboard", "Attribution & Reporting",
+  ]),
+  buildCategory("ooh-measurement", "OOH Measurement", "Tracking & Reporting", [
+    "Reach", "Impressions", "Footfall", "QR Scans", "Leads", "Coupon/Promo Tracking",
+  ]),
+];
+
+export const DEFAULT_SERVICE_PACKAGES: ServicePackagesConfig = normalizeServicePackages({
+  categories: DEFAULT_SERVICE_CATEGORIES.map((c) => c.category),
+  services: DEFAULT_SERVICE_CATEGORIES.flatMap((c) => c.services),
+  // serviceKeys are left empty (rather than pointing at specific items from
+  // the catalogue above) — with 100+ granular services across 16
+  // categories, no small hand-picked subset represents "Growth" or
+  // "Performance" better than the others, so each tier just carries a
+  // written description instead until the consultant picks real services.
   tiers: [
-    {
-      key: "foundation",
-      name: "Foundation",
-      price: 30000,
-      serviceKeys: [],
-      descriptionOverride: "Small business / focused execution",
-    },
+    { key: "foundation", name: "Foundation", price: 30000, serviceKeys: [], descriptionOverride: "Small business / focused execution" },
     {
       key: "growth",
       name: "Growth",
       price: 50000,
-      serviceKeys: ["seo", "social", "paid", "lead-generation"],
-      descriptionOverride: null,
+      serviceKeys: [],
+      descriptionOverride: "SEO, Social, Paid & Lead Generation essentials for scaling client acquisition",
     },
     {
       key: "performance",
       name: "Performance",
       price: 65000,
-      serviceKeys: ["strategy", "paid", "seo", "cro", "crm", "analytics"],
-      descriptionOverride: null,
+      serviceKeys: [],
+      descriptionOverride: "Full-funnel strategy, paid media, CRO, CRM & analytics for sustained growth",
     },
   ],
-};
+});

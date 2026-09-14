@@ -6,16 +6,15 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { ReportDocument } from "@/lib/pdf/ReportDocument";
 import { buildReportData } from "@/lib/pdf/build-report-data";
 import { nextReportVersion } from "@/lib/versioning";
+import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { tryWritePdfToDisk, tryDeletePdfFromDisk } from "@/lib/pdf-storage";
 
 import { apiErrorResponse } from "@/lib/api-handler";
 
-// The DB row's pdfData (base64) is what makes a re-download later return the
-// exact same bytes even if benchmarks or scenarios change afterwards (spec
-// section 45: "If benchmarks are updated later, old reports must NOT
-// change") — see src/lib/pdf-storage.ts for why disk is best-effort only.
+// PDFs are saved to disk so a re-download later returns the exact same
+// bytes even if benchmarks or scenarios change afterwards (spec section 45:
+// "If benchmarks are updated later, old reports must NOT change").
 const REPORTS_DIR = path.join(process.cwd(), "data", "reports");
 
 function parseJsonField<T>(value: string | null | undefined): T | null {
@@ -124,9 +123,15 @@ export async function POST(req: NextRequest) {
     const fileName = `${lead.customerId}-${lead.businessName.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-report-v${version}.pdf`;
 
     // The id is generated here (rather than left to the DB's own default)
-    // purely so the disk mirror and the DB row agree on a name.
+    // so the PDF can be written to disk BEFORE the snapshot row is inserted
+    // — if the write fails (disk full, permissions), nothing gets inserted
+    // and the request just fails cleanly. The old order (insert row, then
+    // write file) could leave an orphaned DB row pointing at a PDF that was
+    // never actually written, permanently shown as "editable" in the UI
+    // with no way to fix it short of deleting the row by hand.
     const snapshotId = randomUUID();
-    tryWritePdfToDisk(REPORTS_DIR, `${snapshotId}.pdf`, buffer);
+    fs.mkdirSync(REPORTS_DIR, { recursive: true });
+    fs.writeFileSync(path.join(REPORTS_DIR, `${snapshotId}.pdf`), buffer);
 
     let snapshot;
     try {
@@ -142,14 +147,12 @@ export async function POST(req: NextRequest) {
           version,
           reportData: JSON.stringify(reportData),
           pdfFileName: fileName,
-          pdfData: buffer.toString("base64"),
         })
         .returning();
     } catch (insertErr) {
-      // The PDF may have been written under snapshotId (disk is best-effort
-      // — see tryWritePdfToDisk) — clean it up rather than leaving a stray
-      // file with no DB row pointing at it.
-      tryDeletePdfFromDisk(REPORTS_DIR, `${snapshotId}.pdf`);
+      // The PDF was already written under snapshotId — clean it up rather
+      // than leaving a stray file with no DB row pointing at it.
+      fs.rmSync(path.join(REPORTS_DIR, `${snapshotId}.pdf`), { force: true });
       throw insertErr;
     }
 

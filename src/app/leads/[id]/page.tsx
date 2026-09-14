@@ -1,17 +1,18 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api-client";
 import { PageHeading, Card, CardHeader, Badge, Select, Button, Spinner, Input, LinkButton, Textarea, Modal, Field } from "@/components/ui";
-import { LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS, CURRENCIES, type LeadStatus } from "@/lib/constants";
+import { LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS, CURRENCIES, GENDER_LABELS, type LeadStatus, type Gender } from "@/lib/constants";
 import { formatCurrency, formatCurrencyDisplay, formatRoas } from "@/lib/calculations";
-import { CheckCircle2, Circle, Plus, Trash2, Pencil, PauseCircle, PlayCircle, Download, Receipt } from "lucide-react";
+import { CheckCircle2, Circle, Plus, Trash2, Pencil, PauseCircle, PlayCircle, Download, Receipt, Paperclip, Upload } from "lucide-react";
 
 interface Lead {
   id: string;
   customerId: string;
   customerName: string;
+  gender?: string | null;
   businessName: string;
   email?: string | null;
   phone?: string | null;
@@ -85,6 +86,14 @@ interface Payment {
   createdAt: string;
 }
 
+interface LeadDocument {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  createdAt: string;
+}
+
 interface LeadDetail {
   lead: Lead;
   followUps: FollowUp[];
@@ -94,6 +103,19 @@ interface LeadDetail {
   proposals: ProposalRow[];
   billing: BillingProfile;
   payments: Payment[];
+  documents: LeadDocument[];
+}
+
+// Mirrors the allow-list enforced server-side in
+// /api/leads/[id]/documents (route.ts) — checked here too so a rejected
+// file never has to make a round trip just to find out it's not allowed.
+const ALLOWED_DOCUMENT_EXTENSIONS = ["pdf", "doc", "docx", "xls", "xlsx", "jpg", "jpeg", "png"];
+const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024; // 10MB
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 const PAYMENT_TYPE_LABELS: Record<PaymentType, string> = {
@@ -114,7 +136,7 @@ export default function LeadDetailPage() {
   const [addingFollowUp, setAddingFollowUp] = useState(false);
   const [notesDraft, setNotesDraft] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<{ kind: "report" | "proposal" | "lead" | "payment"; id: string; label: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ kind: "report" | "proposal" | "lead" | "payment" | "document"; id: string; label: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [billingDraft, setBillingDraft] = useState({ currency: "INR", advanceAmount: "", monthlyFeeAmount: "", projectFeeAmount: "", taxExempt: false });
   const [savingBilling, setSavingBilling] = useState(false);
@@ -126,6 +148,12 @@ export default function LeadDetailPage() {
   const [customInvoiceDraft, setCustomInvoiceDraft] = useState({ description: "", amount: "" });
   const [customInvoiceGenerating, setCustomInvoiceGenerating] = useState(false);
   const [customInvoiceError, setCustomInvoiceError] = useState<string | null>(null);
+  const [editingFollowUpId, setEditingFollowUpId] = useState<string | null>(null);
+  const [followUpEditDraft, setFollowUpEditDraft] = useState("");
+  const [savingFollowUpEdit, setSavingFollowUpEdit] = useState(false);
+  const [uploadingDocument, setUploadingDocument] = useState(false);
+  const [documentError, setDocumentError] = useState<string | null>(null);
+  const documentInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(() => {
     api.get<LeadDetail>(`/api/leads/${id}`).then((d) => {
@@ -146,7 +174,7 @@ export default function LeadDetailPage() {
   }, [id, load]);
 
   if (!data) return <div className="flex justify-center py-20"><Spinner /></div>;
-  const { lead, followUps, scenarios, reports, proposals, billing, payments } = data;
+  const { lead, followUps, scenarios, reports, proposals, billing, payments, documents } = data;
   const sortedReports = [...reports].sort((a, b) => b.version - a.version);
   const latestVersion = sortedReports[0]?.version;
 
@@ -181,6 +209,61 @@ export default function LeadDetailPage() {
     await load();
   }
 
+  function startEditFollowUp(fu: FollowUp) {
+    setEditingFollowUpId(fu.id);
+    setFollowUpEditDraft(fu.note ?? "");
+  }
+
+  function cancelEditFollowUp() {
+    setEditingFollowUpId(null);
+    setFollowUpEditDraft("");
+  }
+
+  async function saveEditFollowUp(fu: FollowUp) {
+    setSavingFollowUpEdit(true);
+    await api.patch(`/api/follow-ups/${fu.id}`, { note: followUpEditDraft.trim() || null });
+    setSavingFollowUpEdit(false);
+    setEditingFollowUpId(null);
+    setFollowUpEditDraft("");
+    await load();
+  }
+
+  function handleDocumentFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file later
+    if (!file) return;
+    setDocumentError(null);
+
+    const ext = file.name.includes(".") ? file.name.split(".").pop()!.toLowerCase() : "";
+    if (!ALLOWED_DOCUMENT_EXTENSIONS.includes(ext)) {
+      setDocumentError("Only PDF, DOC/DOCX, XLS/XLSX, and JPG/PNG files are allowed.");
+      return;
+    }
+    if (file.size > MAX_DOCUMENT_BYTES) {
+      setDocumentError("That file is over the 10MB limit.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      setUploadingDocument(true);
+      try {
+        await api.post(`/api/leads/${id}/documents`, {
+          fileName: file.name,
+          mimeType: file.type,
+          fileData: reader.result as string,
+        });
+        await load();
+      } catch (err) {
+        setDocumentError((err as Error).message);
+      } finally {
+        setUploadingDocument(false);
+      }
+    };
+    reader.onerror = () => setDocumentError("Couldn't read that file — please try again.");
+    reader.readAsDataURL(file);
+  }
+
   async function confirmDelete() {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -191,7 +274,9 @@ export default function LeadDetailPage() {
           ? `/api/proposals/${deleteTarget.id}`
           : deleteTarget.kind === "payment"
             ? `/api/billing/payments/${deleteTarget.id}`
-            : `/api/leads/${deleteTarget.id}`;
+            : deleteTarget.kind === "document"
+              ? `/api/leads/${id}/documents/${deleteTarget.id}`
+              : `/api/leads/${deleteTarget.id}`;
     await api.del(url);
     if (deleteTarget.kind === "lead") {
       router.push("/leads");
@@ -277,11 +362,43 @@ export default function LeadDetailPage() {
   }
 
   const now = new Date();
-  const sortedFollowUps = [...followUps].sort((a, b) => {
-    const ad = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
-    const bd = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
-    return ad - bd;
-  });
+  // Newest activity first, full stop — a call you just logged, a note, a
+  // status change, or a reminder you just scheduled all show up at the top,
+  // same as any normal activity feed. (Previously this list was sorted by
+  // due date instead, which pinned upcoming reminders above the actual
+  // history and made "what just happened" hard to see.)
+  const sortedFollowUps = [...followUps].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+
+  // Auto-generated "Status Change" entries are the boundary for editing: a
+  // logged call/note stays editable (e.g. to correct or add to it) only
+  // until the lead's status next changes, at which point it's locked as
+  // history. Since the list above is already newest-first, the first
+  // Status Change entry found is the most recent one.
+  const lastStatusChangeAt = sortedFollowUps.find((fu) => fu.type === "Status Change")?.createdAt;
+  function isFollowUpEditable(fu: FollowUp) {
+    if (fu.type === "Status Change" || fu.type === "Lead Created") return false;
+    if (!lastStatusChangeAt) return true;
+    return new Date(fu.createdAt).getTime() >= new Date(lastStatusChangeAt).getTime();
+  }
+
+  // Group consecutive same-type entries logged on the same calendar day —
+  // e.g. three "Call" attempts in one afternoon — under a single heading,
+  // so "call the client 3 times, each with a different outcome" reads as
+  // one activity with three timestamped lines instead of three duplicate
+  // rows.
+  type FollowUpGroup = { key: string; type: string; dayLabel: string; items: FollowUp[] };
+  const followUpGroups: FollowUpGroup[] = [];
+  for (const fu of sortedFollowUps) {
+    const dayLabel = new Date(fu.createdAt).toDateString();
+    const lastGroup = followUpGroups[followUpGroups.length - 1];
+    if (lastGroup && lastGroup.type === fu.type && lastGroup.dayLabel === dayLabel) {
+      lastGroup.items.push(fu);
+    } else {
+      followUpGroups.push({ key: fu.id, type: fu.type, dayLabel, items: [fu] });
+    }
+  }
 
   return (
     <div>
@@ -326,6 +443,7 @@ export default function LeadDetailPage() {
               </Select>
             </div>
             <dl className="grid sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+              <Info label="Gender" value={lead.gender ? GENDER_LABELS[lead.gender as Gender] ?? lead.gender : undefined} />
               <Info label="Email" value={lead.email} />
               <Info label="Phone" value={lead.phone} />
               <Info label="WhatsApp" value={lead.whatsapp} />
@@ -373,26 +491,123 @@ export default function LeadDetailPage() {
             <CardHeader title="Follow-up Timeline" />
             <div className="p-4 space-y-3">
               {sortedFollowUps.length === 0 && <p className="text-sm text-slate-400">No follow-ups yet.</p>}
-              {sortedFollowUps.map((fu) => {
-                const overdue = fu.dueDate && !fu.completed && new Date(fu.dueDate) < now;
-                return (
-                  <div key={fu.id} className="flex items-start gap-3">
-                    <button onClick={() => toggleFollowUp(fu)} className="mt-0.5 text-indigo-600 shrink-0">
-                      {fu.completed ? <CheckCircle2 size={18} /> : <Circle size={18} className={overdue ? "text-red-500" : "text-slate-300"} />}
-                    </button>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className={`text-sm font-medium ${fu.completed ? "line-through text-slate-400" : "text-slate-800 dark:text-slate-200"}`}>
-                          {fu.type}
-                        </span>
-                        {fu.dueDate && (
-                          <span className={`text-xs ${overdue ? "text-red-500 font-medium" : "text-slate-400"}`}>
-                            {overdue ? "Overdue: " : "Due "}
-                            {new Date(fu.dueDate).toLocaleDateString()}
+              {followUpGroups.map((group) => {
+                if (group.items.length === 1) {
+                  const fu = group.items[0];
+                  const overdue = fu.dueDate && !fu.completed && new Date(fu.dueDate) < now;
+                  const editable = isFollowUpEditable(fu);
+                  const editing = editingFollowUpId === fu.id;
+                  return (
+                    <div key={fu.id} className="flex items-start gap-3">
+                      <button onClick={() => toggleFollowUp(fu)} className="mt-0.5 text-indigo-600 shrink-0">
+                        {fu.completed ? <CheckCircle2 size={18} /> : <Circle size={18} className={overdue ? "text-red-500" : "text-slate-300"} />}
+                      </button>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`text-sm font-medium ${fu.completed ? "line-through text-slate-400" : "text-slate-800 dark:text-slate-200"}`}>
+                            {fu.type}
                           </span>
+                          <span className="text-xs text-slate-400">{new Date(fu.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>
+                          {fu.dueDate && (
+                            <span className={`text-xs ${overdue ? "text-red-500 font-medium" : "text-slate-400"}`}>
+                              {overdue ? "Overdue: " : "Due "}
+                              {new Date(fu.dueDate).toLocaleDateString()}
+                            </span>
+                          )}
+                          {editable && !editing && (
+                            <button onClick={() => startEditFollowUp(fu)} className="text-slate-300 hover:text-indigo-600">
+                              <Pencil size={12} />
+                            </button>
+                          )}
+                        </div>
+                        {editing ? (
+                          <div className="mt-1 space-y-1">
+                            <Textarea
+                              value={followUpEditDraft}
+                              onChange={(e) => setFollowUpEditDraft(e.target.value)}
+                              rows={2}
+                              className="text-xs"
+                            />
+                            <div className="flex gap-2">
+                              <Button size="sm" onClick={() => saveEditFollowUp(fu)} disabled={savingFollowUpEdit}>
+                                {savingFollowUpEdit ? "Saving…" : "Save"}
+                              </Button>
+                              <Button size="sm" variant="secondary" onClick={cancelEditFollowUp} disabled={savingFollowUpEdit}>
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          fu.note && <p className="text-xs text-slate-500 mt-0.5">{fu.note}</p>
                         )}
                       </div>
-                      {fu.note && <p className="text-xs text-slate-500 mt-0.5">{fu.note}</p>}
+                    </div>
+                  );
+                }
+
+                // Multiple same-type attempts logged the same day (e.g. three
+                // calls) — one heading, each attempt as its own timestamped,
+                // individually editable/completable line underneath.
+                return (
+                  <div key={group.key}>
+                    <div className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                      {group.type} <span className="text-xs font-normal text-slate-400">· {group.items.length} attempts · {group.dayLabel}</span>
+                    </div>
+                    <div className="mt-1 space-y-2">
+                      {group.items.map((fu) => {
+                        const overdue = fu.dueDate && !fu.completed && new Date(fu.dueDate) < now;
+                        const editable = isFollowUpEditable(fu);
+                        const editing = editingFollowUpId === fu.id;
+                        return (
+                          <div key={fu.id} className="flex items-start gap-3 pl-1">
+                            <button onClick={() => toggleFollowUp(fu)} className="mt-0.5 text-indigo-600 shrink-0">
+                              {fu.completed ? <CheckCircle2 size={16} /> : <Circle size={16} className={overdue ? "text-red-500" : "text-slate-300"} />}
+                            </button>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-xs font-medium text-slate-500">
+                                  {new Date(fu.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                                </span>
+                                {fu.dueDate && (
+                                  <span className={`text-xs ${overdue ? "text-red-500 font-medium" : "text-slate-400"}`}>
+                                    {overdue ? "Overdue: " : "Due "}
+                                    {new Date(fu.dueDate).toLocaleDateString()}
+                                  </span>
+                                )}
+                                {editable && !editing && (
+                                  <button onClick={() => startEditFollowUp(fu)} className="text-slate-300 hover:text-indigo-600">
+                                    <Pencil size={12} />
+                                  </button>
+                                )}
+                              </div>
+                              {editing ? (
+                                <div className="mt-1 space-y-1">
+                                  <Textarea
+                                    value={followUpEditDraft}
+                                    onChange={(e) => setFollowUpEditDraft(e.target.value)}
+                                    rows={2}
+                                    className="text-xs"
+                                  />
+                                  <div className="flex gap-2">
+                                    <Button size="sm" onClick={() => saveEditFollowUp(fu)} disabled={savingFollowUpEdit}>
+                                      {savingFollowUpEdit ? "Saving…" : "Save"}
+                                    </Button>
+                                    <Button size="sm" variant="secondary" onClick={cancelEditFollowUp} disabled={savingFollowUpEdit}>
+                                      Cancel
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                fu.note ? (
+                                  <p className={`text-xs mt-0.5 ${fu.completed ? "line-through text-slate-400" : "text-slate-500"}`}>{fu.note}</p>
+                                ) : (
+                                  <p className="text-xs text-slate-300 italic mt-0.5">No note</p>
+                                )
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 );
@@ -518,6 +733,59 @@ export default function LeadDetailPage() {
               </LinkButton>
             </div>
           </Card>
+
+          <Card>
+            <CardHeader title="Documents" subtitle="Supporting files — contracts, ID/business proof, brand assets, and the like." />
+            <div className="p-4 space-y-3">
+              {documents.length === 0 && <p className="text-sm text-slate-400">No documents uploaded yet.</p>}
+              {documents.map((doc) => (
+                <div key={doc.id} className="flex items-center justify-between gap-2 text-sm">
+                  <div className="min-w-0 flex items-start gap-2">
+                    <Paperclip size={14} className="mt-0.5 text-slate-400 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="font-medium text-slate-700 dark:text-slate-200 truncate">{doc.fileName}</div>
+                      <div className="text-xs text-slate-400">
+                        {formatFileSize(doc.fileSize)} · {new Date(doc.createdAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-1.5 shrink-0">
+                    <a href={`/api/leads/${id}/documents/${doc.id}`}>
+                      <Button size="sm" variant="ghost" title="Download">
+                        <Download size={13} />
+                      </Button>
+                    </a>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      title="Delete this document"
+                      onClick={() => setDeleteTarget({ kind: "document", id: doc.id, label: doc.fileName })}
+                    >
+                      <Trash2 size={13} className="text-red-500" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              <input
+                ref={documentInputRef}
+                type="file"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                onChange={handleDocumentFile}
+                className="hidden"
+              />
+              <Button
+                size="sm"
+                variant="secondary"
+                className="mt-2 w-full"
+                disabled={uploadingDocument}
+                onClick={() => documentInputRef.current?.click()}
+              >
+                <Upload size={13} /> {uploadingDocument ? "Uploading…" : "Upload Document"}
+              </Button>
+              {documentError && <p className="text-xs text-red-500">{documentError}</p>}
+              <p className="text-xs text-slate-400">PDF, DOC/DOCX, XLS/XLSX, JPG/PNG — up to 10MB.</p>
+            </div>
+          </Card>
         </div>
       </div>
 
@@ -528,10 +796,12 @@ export default function LeadDetailPage() {
           </h2>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             {deleteTarget?.kind === "lead"
-              ? "This permanently deletes this lead and everything attached to it — notes, follow-ups, assessments, scenarios, every report and proposal version, billing and payment history, and their PDFs. This can't be undone."
+              ? "This permanently deletes this lead and everything attached to it — notes, follow-ups, assessments, scenarios, every report and proposal version, billing and payment history, uploaded documents, and their PDFs. This can't be undone."
               : deleteTarget?.kind === "payment"
                 ? "This permanently deletes this payment entry from the billing history. This can't be undone."
-                : "This permanently deletes this version and its PDF. This can't be undone."}
+                : deleteTarget?.kind === "document"
+                  ? "This permanently deletes this uploaded document. This can't be undone."
+                  : "This permanently deletes this version and its PDF. This can't be undone."}
           </p>
           <div className="flex justify-end gap-2 pt-4">
             <Button variant="secondary" onClick={() => setDeleteTarget(null)} disabled={deleting}>
