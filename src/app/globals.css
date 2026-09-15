@@ -23,3 +23,19 @@ body {
   font-family:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
+
+/* Presentation Mode (public site, Home page) — each `[data-slide]` section
+   fills the viewport and scroll-snaps into place so arrow-key navigation
+   (see usePresentationSlideNav) lands cleanly on one "slide" at a time. */
+html.presentation-mode {
+  scroll-behavior: smooth;
+}
+html.presentation-mode body {
+  scroll-snap-type: y proximity;
+}
+html.presentation-mode [data-slide] {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  scroll-snap-align: start;
+}

@@ -217,6 +217,44 @@ function ensureDailyTasksTable(db: DatabaseSync) {
   `);
 }
 
+// Same reasoning as ensureProposalsTable above — the public-site lead
+// capture form added a whole new `website_leads` table.
+function ensureWebsiteLeadsTable(db: DatabaseSync) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS "website_leads" (
+      "id" text PRIMARY KEY NOT NULL,
+      "lead_id" text NOT NULL UNIQUE,
+      "name" text NOT NULL,
+      "email" text NOT NULL,
+      "phone" text,
+      "company" text,
+      "website" text,
+      "industry" text,
+      "business_goal" text,
+      "budget" text,
+      "message" text,
+      "lead_source" text DEFAULT 'Website' NOT NULL,
+      "landing_page" text,
+      "case_study_viewed" text,
+      "industry_viewed" text,
+      "utm_source" text,
+      "utm_medium" text,
+      "utm_campaign" text,
+      "utm_term" text,
+      "utm_content" text,
+      "device" text,
+      "ip_address" text,
+      "status" text DEFAULT 'New' NOT NULL,
+      "priority" text DEFAULT 'Warm' NOT NULL,
+      "notes" text,
+      "sheet_synced" integer DEFAULT 0 NOT NULL,
+      "sheet_sync_error" text,
+      "created_at" integer NOT NULL,
+      "updated_at" integer NOT NULL
+    )
+  `);
+}
+
 // --- Lightweight auto-seed: benchmark data files ----------------------------
 // The Benchmark Database (data/benchmarks/*.json) is the source of truth for
 // per-platform, per-industry CPC/CTR/CVR/CPM/CPV/Profit-Margin starting
@@ -343,6 +381,7 @@ function runSelfHeal() {
   ensureLeadBillingTables(sqlite);
   ensureLeadDocumentsTable(sqlite);
   ensureDailyTasksTable(sqlite);
+  ensureWebsiteLeadsTable(sqlite);
   ensureBenchmarkSeedFiles(sqlite);
   globalForSelfHeal.__dbSelfHealAt = Date.now();
 }

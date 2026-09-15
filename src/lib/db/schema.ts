@@ -385,6 +385,48 @@ export const leadDocuments = sqliteTable("lead_documents", {
   createdAt: timestamps.createdAt,
 });
 
+// --- Website leads (public site lead-capture form) -------------------------
+// One row per public-site form submission — a local mirror of what's also
+// sent to the "Website Leads" Google Sheet (see docs/GOOGLE_SHEETS_SETUP.md
+// and src/app/actions/submit-lead.ts). Google Sheets is the primary,
+// consultant-editable record per the lead-gen spec; this table exists so
+// the Lead ID can be generated locally, the form still works before Sheets
+// is configured, and the admin dashboard's Lead Overview widget has
+// something fast to read without an external round trip. Deliberately kept
+// separate from the internal CRM's `leads` table above — a raw website
+// enquiry isn't a qualified business-development lead until the consultant
+// decides it is (see /admin/website-leads).
+export const websiteLeads = sqliteTable("website_leads", {
+  id: id(),
+  leadId: text("lead_id").notNull().unique(), // e.g. L0001 — see nextWebsiteLeadId()
+  name: text("name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone"),
+  company: text("company"),
+  website: text("website"),
+  industry: text("industry"),
+  businessGoal: text("business_goal"),
+  budget: text("budget"),
+  message: text("message"),
+  leadSource: text("lead_source").notNull().default("Website"),
+  landingPage: text("landing_page"),
+  caseStudyViewed: text("case_study_viewed"),
+  industryViewed: text("industry_viewed"),
+  utmSource: text("utm_source"),
+  utmMedium: text("utm_medium"),
+  utmCampaign: text("utm_campaign"),
+  utmTerm: text("utm_term"),
+  utmContent: text("utm_content"),
+  device: text("device"),
+  ipAddress: text("ip_address"),
+  status: text("status").notNull().default("New"), // see WEBSITE_LEAD_STATUSES
+  priority: text("priority").notNull().default("Warm"), // Hot | Warm | Cold
+  notes: text("notes"),
+  sheetSynced: integer("sheet_synced", { mode: "boolean" }).notNull().default(false),
+  sheetSyncError: text("sheet_sync_error"),
+  ...timestamps,
+});
+
 // --- Daily to-do's (the consultant's own task list, not tied to any lead) --
 // Deliberately general-purpose ("renew hosting", "prepare invoice") rather
 // than lead-scoped follow-ups — those already exist as `followUps`. Every

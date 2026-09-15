@@ -17,6 +17,7 @@ import {
   Menu,
   X,
   TrendingUp,
+  Globe,
 } from "lucide-react";
 import clsx from "clsx";
 import { api } from "@/lib/api-client";
@@ -26,24 +27,25 @@ import { useActivityToasts } from "@/hooks/useActivityToasts";
 import { ToastStack } from "@/components/ToastStack";
 
 const NAV = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/leads", label: "Leads", icon: Users },
-  { href: "/assessment/new", label: "New Assessment", icon: FilePlus2 },
-  { href: "/reports", label: "Reports", icon: FileText },
-  { href: "/follow-ups", label: "Follow-ups", icon: CalendarClock },
-  { href: "/daily-tasks", label: "Daily To-Do's", icon: ListChecks },
-  { href: "/proposals", label: "Proposals", icon: Handshake },
-  { href: "/scenarios", label: "Scenarios", icon: SlidersHorizontal },
-  { href: "/benchmarks", label: "Benchmarks", icon: Database },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/admin/leads", label: "Leads", icon: Users },
+  { href: "/admin/website-leads", label: "Website Leads", icon: Globe },
+  { href: "/admin/assessment/new", label: "New Assessment", icon: FilePlus2 },
+  { href: "/admin/reports", label: "Reports", icon: FileText },
+  { href: "/admin/follow-ups", label: "Follow-ups", icon: CalendarClock },
+  { href: "/admin/daily-tasks", label: "Daily To-Do's", icon: ListChecks },
+  { href: "/admin/proposals", label: "Proposals", icon: Handshake },
+  { href: "/admin/scenarios", label: "Scenarios", icon: SlidersHorizontal },
+  { href: "/admin/benchmarks", label: "Benchmarks", icon: Database },
+  { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
-// Mobile bottom bar shows the 5 most-used destinations; everything else
+// Mobile bottom bar shows the 4 most-used destinations; everything else
 // lives in the hamburger menu. Tablet/desktop get the full sidebar.
-const MOBILE_PRIMARY = ["/", "/leads", "/assessment/new", "/follow-ups"];
+const MOBILE_PRIMARY = ["/admin", "/admin/leads", "/admin/assessment/new", "/admin/follow-ups"];
 
 function isActive(pathname: string, href: string) {
-  if (href === "/") return pathname === "/";
+  if (href === "/admin") return pathname === "/admin";
   return pathname.startsWith(href);
 }
 
@@ -85,8 +87,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {NAV.map((item) => {
             const Icon = item.icon;
             const active = isActive(pathname, item.href);
-            const showFollowUpBadge = item.href === "/follow-ups" && followUpBadgeCount > 0;
-            const showTaskBadge = item.href === "/daily-tasks" && ongoingTaskCount > 0;
+            const showFollowUpBadge = item.href === "/admin/follow-ups" && followUpBadgeCount > 0;
+            const showTaskBadge = item.href === "/admin/daily-tasks" && ongoingTaskCount > 0;
             return (
               <Link
                 key={item.href}
@@ -117,6 +119,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
+        <div className="px-3 py-3 border-t border-slate-200 dark:border-slate-800">
+          <a
+            href="/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+          >
+            View public site ↗
+          </a>
+        </div>
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
@@ -150,8 +162,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 {NAV.map((item) => {
                   const Icon = item.icon;
                   const active = isActive(pathname, item.href);
-                  const showFollowUpBadge = item.href === "/follow-ups" && followUpBadgeCount > 0;
-                  const showTaskBadge = item.href === "/daily-tasks" && ongoingTaskCount > 0;
+                  const showFollowUpBadge = item.href === "/admin/follow-ups" && followUpBadgeCount > 0;
+                  const showTaskBadge = item.href === "/admin/daily-tasks" && ongoingTaskCount > 0;
                   return (
                     <Link
                       key={item.href}
@@ -183,6 +195,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   );
                 })}
               </nav>
+              <div className="px-3 py-3 border-t border-slate-200 dark:border-slate-800">
+                <a
+                  href="/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-500 dark:text-slate-400"
+                >
+                  View public site ↗
+                </a>
+              </div>
             </div>
           </div>
         )}
@@ -196,7 +218,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {NAV.filter((n) => MOBILE_PRIMARY.includes(n.href)).map((item) => {
             const Icon = item.icon;
             const active = isActive(pathname, item.href);
-            const showBadge = item.href === "/follow-ups" && followUpBadgeCount > 0;
+            const showBadge = item.href === "/admin/follow-ups" && followUpBadgeCount > 0;
             return (
               <Link
                 key={item.href}
