@@ -26,7 +26,7 @@ and add 3 brand-new files/folders.
 ## After copying
 
 1. If your dev server (`npm run dev`) is running, just refresh the browser — no restart needed.
-   (If it's not running, start it as usual with `npm run dev`.)
+   (If it's not running, start it as usual with `npm run dev`.).
 2. Open any lead's detail page — you'll see a new "Billing" card with:
    - Advance Paid / Monthly Recurring Fee / Project Fee amounts (with currency)
    - An Active/Canceled status with Cancel Billing / Resume Billing buttons
