@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { leads, followUps, assessments, scenarios, reportSnapshots, proposals, leadBilling, billingPayments, leadDocuments } from "@/lib/db/schema";
 import { eq, desc } from "drizzle-orm";
-import fs from "node:fs";
 import path from "node:path";
 
 import { apiErrorResponse } from "@/lib/api-handler";
+import { tryDeletePdfFromDisk } from "@/lib/pdf-storage";
 
 export async function GET(_req: NextRequest, ctx: RouteContext<"/api/leads/[id]">) {
   try {
@@ -135,14 +135,10 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/leads/[i
       db.select({ id: reportSnapshots.id }).from(reportSnapshots).where(eq(reportSnapshots.leadId, id)),
       db.select({ id: proposals.id }).from(proposals).where(eq(proposals.leadId, id)),
     ]);
-    for (const r of reportRows) {
-      const p = path.join(process.cwd(), "data", "reports", `${r.id}.pdf`);
-      if (fs.existsSync(p)) fs.unlinkSync(p);
-    }
-    for (const p of proposalRows) {
-      const filePath = path.join(process.cwd(), "data", "proposals", `${p.id}.pdf`);
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    }
+    const reportsDir = path.join(process.cwd(), "data", "reports");
+    const proposalsDir = path.join(process.cwd(), "data", "proposals");
+    for (const r of reportRows) tryDeletePdfFromDisk(reportsDir, `${r.id}.pdf`);
+    for (const p of proposalRows) tryDeletePdfFromDisk(proposalsDir, `${p.id}.pdf`);
 
     await db.delete(leads).where(eq(leads.id, id));
     return NextResponse.json({ ok: true });

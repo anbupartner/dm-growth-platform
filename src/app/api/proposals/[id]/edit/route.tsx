@@ -8,11 +8,11 @@ import { buildProposalData, type ConsultantOverride } from "@/lib/pdf/build-prop
 import type { ReportData } from "@/lib/pdf/types";
 import type { ProposalPackage } from "@/lib/pdf/proposal-types";
 import { nextProposalVersion } from "@/lib/versioning";
-import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
 import { apiErrorResponse } from "@/lib/api-handler";
+import { tryWritePdfToDisk, tryDeletePdfFromDisk } from "@/lib/pdf-storage";
 
 const PROPOSALS_DIR = path.join(process.cwd(), "data", "proposals");
 
@@ -150,12 +150,10 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/proposals/[
 
     const fileName = `${lead.customerId}-${lead.businessName.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-proposal-v${version}.pdf`;
 
-    // Write the PDF to disk before inserting the row — see the matching
-    // comment in POST /api/reports — so a write failure never leaves an
-    // orphaned proposal row pointing at a PDF that doesn't exist.
+    // Best-effort local-disk copy; the base64 pdfData column below is the
+    // load-bearing copy — see the comment on proposals.pdfData in schema.ts.
     const proposalId = randomUUID();
-    fs.mkdirSync(PROPOSALS_DIR, { recursive: true });
-    fs.writeFileSync(path.join(PROPOSALS_DIR, `${proposalId}.pdf`), buffer);
+    tryWritePdfToDisk(PROPOSALS_DIR, `${proposalId}.pdf`, buffer);
 
     let row;
     try {
@@ -170,6 +168,7 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/proposals/[
           termsText: termsText ?? "",
           validUntil: validUntil ? new Date(validUntil) : null,
           pdfFileName: fileName,
+          pdfData: buffer.toString("base64"),
           consultantOverride: consultantOverride ? JSON.stringify(consultantOverride) : null,
           revisionPolicyText: revisionPolicyText ?? null,
           clientResponsibilitiesText: clientResponsibilitiesText ?? null,
@@ -199,7 +198,7 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/proposals/[
         })
         .returning();
     } catch (insertErr) {
-      fs.rmSync(path.join(PROPOSALS_DIR, `${proposalId}.pdf`), { force: true });
+      tryDeletePdfFromDisk(PROPOSALS_DIR, `${proposalId}.pdf`);
       throw insertErr;
     }
 

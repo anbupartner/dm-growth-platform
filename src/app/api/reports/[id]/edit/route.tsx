@@ -6,11 +6,11 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { ReportDocument } from "@/lib/pdf/ReportDocument";
 import type { ReportData } from "@/lib/pdf/types";
 import { nextReportVersion } from "@/lib/versioning";
-import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
 import { apiErrorResponse } from "@/lib/api-handler";
+import { tryWritePdfToDisk, tryDeletePdfFromDisk } from "@/lib/pdf-storage";
 
 const REPORTS_DIR = path.join(process.cwd(), "data", "reports");
 
@@ -40,12 +40,10 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/reports/[id
     const version = await nextReportVersion(source.leadId);
     const fileName = `${lead.customerId}-${lead.businessName.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-report-v${version}.pdf`;
 
-    // Write the PDF to disk before inserting the row (see the matching
-    // comment in POST /api/reports) so a write failure never leaves an
-    // orphaned DB row pointing at a PDF that doesn't exist.
+    // Best-effort local-disk copy; the base64 pdfData column below is the
+    // load-bearing copy — see the comment in POST /api/reports.
     const snapshotId = randomUUID();
-    fs.mkdirSync(REPORTS_DIR, { recursive: true });
-    fs.writeFileSync(path.join(REPORTS_DIR, `${snapshotId}.pdf`), buffer);
+    tryWritePdfToDisk(REPORTS_DIR, `${snapshotId}.pdf`, buffer);
 
     let snapshot;
     try {
@@ -64,10 +62,11 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/reports/[id
           version,
           reportData: JSON.stringify(reportData),
           pdfFileName: fileName,
+          pdfData: buffer.toString("base64"),
         })
         .returning();
     } catch (insertErr) {
-      fs.rmSync(path.join(REPORTS_DIR, `${snapshotId}.pdf`), { force: true });
+      tryDeletePdfFromDisk(REPORTS_DIR, `${snapshotId}.pdf`);
       throw insertErr;
     }
 

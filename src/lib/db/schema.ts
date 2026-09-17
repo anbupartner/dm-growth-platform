@@ -174,6 +174,13 @@ export const reportSnapshots = sqliteTable("report_snapshots", {
   // just not editable — regenerate to get an editable version).
   reportData: text("report_data"),
   pdfFileName: text("pdf_file_name"),
+  // The rendered PDF's bytes, base64-encoded — the load-bearing copy. Local
+  // disk (data/reports/*.pdf) is only a best-effort convenience for local
+  // dev; on Netlify the deployed function's filesystem is read-only, so this
+  // column is what every download/view actually reads from. Nullable
+  // because report snapshots created before this column existed won't have
+  // it (falls back to disk for those, if the file still happens to exist).
+  pdfData: text("pdf_data"),
   createdAt: timestamps.createdAt,
 });
 
@@ -194,6 +201,10 @@ export const proposals = sqliteTable("proposals", {
   termsText: text("terms_text"), // payment terms / what's included, free text
   validUntil: integer("valid_until", { mode: "timestamp" }),
   pdfFileName: text("pdf_file_name"),
+  // Same reasoning as reportSnapshots.pdfData above — the load-bearing copy
+  // of the rendered PDF, since Netlify's deployed function filesystem can't
+  // persist a disk-written copy.
+  pdfData: text("pdf_data"),
   // Optional per-proposal override of the "prepared by" identity shown on
   // the PDF's cover page, header/footer and closing CTA (consultant name,
   // company, phone, WhatsApp, email, website) — JSON, only the fields the

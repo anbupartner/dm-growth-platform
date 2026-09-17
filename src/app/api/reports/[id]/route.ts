@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { reportSnapshots } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import fs from "node:fs";
 import path from "node:path";
 
 import { apiErrorResponse } from "@/lib/api-handler";
+import { tryDeletePdfFromDisk } from "@/lib/pdf-storage";
 
 // Historical snapshot metadata only (not a re-render). Per spec section 45,
 // old reports must keep showing the numbers that were actually used at
@@ -32,8 +32,7 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/reports/
     const row = await db.query.reportSnapshots.findFirst({ where: eq(reportSnapshots.id, id) });
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    const filePath = path.join(process.cwd(), "data", "reports", `${id}.pdf`);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    tryDeletePdfFromDisk(path.join(process.cwd(), "data", "reports"), `${id}.pdf`);
 
     await db.delete(reportSnapshots).where(eq(reportSnapshots.id, id));
     return NextResponse.json({ ok: true });
